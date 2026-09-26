@@ -1,0 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cu124
+torch==2.5.1
+transformers==4.46.3
+peft==0.13.2
+accelerate==1.14.0
+numpy==1.26.4
+numba==0.65.1
+tokenizers==0.20.3
+llvmlite==0.47.0
+nvidia-ml-py==12.560.30

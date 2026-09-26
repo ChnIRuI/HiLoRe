@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.nbc
+*.nbi
+.venv/
+runs/
+*.pt
+*.safetensors
+*.parquet
+.DS_Store
+._*
+*.jsonl
+manifest.json
+profile.json
+checkpoints/
+initialization/
