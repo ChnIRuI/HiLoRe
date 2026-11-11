@@ -11,7 +11,10 @@ export PYTHONPATH="$ROOT" PYTHONDONTWRITEBYTECODE=1
 args=("$PYTHON_BIN" -m torch.distributed.run --standalone --nproc_per_node=4
       -m hilore.initialize --split-manifest "$SPLIT_MANIFEST" --updates "$UPDATES_DIR"
       --output "$OUTPUT_DIR" --risk-budget "$RISK_BUDGET"
+      --candidate-limit "${CANDIDATE_LIMIT:-8}" --microbatch-repeats "${MICROBATCH_REPEATS:-2}"
+      --interaction-rounds "${INTERACTION_ROUNDS:-2}"
       --config "${CONFIG:-$ROOT/configs/qwen25_3b_deepmath.json}")
+if [[ -n "${VALIDATION_RECORD:-}" ]]; then args+=(--validation-record "$VALIDATION_RECORD"); fi
 if [[ -n "${MODEL_PATH:-}" ]]; then args+=(--model "$MODEL_PATH"); fi
 if [[ "${DRY_RUN:-0}" == 1 ]]; then
   printf '%q ' "${args[@]}"

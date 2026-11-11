@@ -1,5 +1,3 @@
-"""Deferred non-reentrant recovery of complete decoder state bundles."""
-
 import types
 import torch
 from torch.autograd.graph import saved_tensors_hooks
@@ -21,13 +19,7 @@ def _storage(tensor):
 
 
 class Bundle:
-    """Keep the original autograd graph and defer saved-state recovery.
 
-    Every saved tensor in the region has a handle. R repopulates all handles
-    from exact checkpoint inputs under the original RNG and autocast settings.
-    H/L supply handles directly and execute no region replay. The implementation
-    supports one backward per forward, without retained or higher-order graphs.
-    """
 
     def __init__(self, fn, args, kwargs, representation, device, minimum_bytes=32 << 20):
         if representation not in ('R', 'H', 'L'):
@@ -172,7 +164,7 @@ class Bundle:
 
 
 class Recovery:
-    """Install explicit decoder boundaries inside any surrounding FSDP wrappers."""
+
 
     def __init__(self, model, method='gc'):
         from transformers.models.qwen2.modeling_qwen2 import Qwen2DecoderLayer

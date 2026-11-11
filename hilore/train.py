@@ -1,5 +1,3 @@
-"""Four-rank FSDP actor updates over fixed GRPO replay tensors."""
-
 import argparse
 import hashlib
 import importlib.metadata
@@ -57,7 +55,7 @@ def fingerprint(config, model_identity=None):
 
 
 def model_identity(model_path):
-    """Bind a profile to local weight bytes or an immutable Hub commit."""
+
     path = Path(model_path)
     if path.is_dir():
         files = sorted(set(path.glob('*.safetensors')) | set(path.glob('pytorch_model*.bin')))
@@ -80,7 +78,7 @@ def model_identity(model_path):
 
 
 def build_model(model_path, config, device, identity=None):
-    """Retain FP32 persistent parameters; FSDP handles BF16 compute casts."""
+
     hf_config = AutoConfig.from_pretrained(model_path, trust_remote_code=False, revision=(identity or {}).get('revision'))
     validate_model_configuration(hf_config.to_dict())
     model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=getattr(torch, config['persistent_precision']),
@@ -129,7 +127,7 @@ def make_optimizer(model, config):
 
 
 def gradient_snapshot(model):
-    """Copy disjoint FP32 FSDP gradient shards without retaining device storage."""
+
     return {name: (p.grad.detach().float().cpu().clone() if p.grad is not None
                    else torch.zeros(p.shape, dtype=torch.float32))
             for name, p in model.named_parameters() if p.requires_grad}
@@ -161,7 +159,7 @@ def backward_batch(model, recovery, scheduler, batch, total_tokens, config, devi
 
 def actor_update(model, optimizer, recovery, scheduler, data, config, device,
                  collect_gradients=False, observer=None):
-    """Reduce each microbatch, accumulate in FP32, then take one AdamW step."""
+
     rank, world = dist.get_rank(), dist.get_world_size()
     total_tokens = int(data['response_mask'].sum())
     optimizer.zero_grad(set_to_none=True)
@@ -180,7 +178,7 @@ def actor_update(model, optimizer, recovery, scheduler, data, config, device,
 
 
 def validate_configuration(config):
-    """Reject silent changes to the supported Table 6 execution configuration."""
+
     fixed = {'train_prompts_per_update': 512, 'responses_per_prompt': 8,
         'prompt_limit': 1024, 'response_limit': 2048, 'microbatch_token_target_per_rank': 4096,
         'remove_padding': False, 'actor_epochs': 1, 'learning_rate': 2e-6, 'optimizer': 'AdamW',
@@ -216,7 +214,7 @@ def checkpoint_context(config, identity, scheduler, digests):
 
 
 def save_checkpoint(directory, step, model, optimizer, recovery, context):
-    """Save exact local adapter/optimizer shards and RNG at an update boundary."""
+
     from .profiling import Snapshot
     error = [None]
     if dist.get_rank() == 0:
@@ -280,7 +278,7 @@ def main():
     files = sorted(args.updates.glob('update_*.pt'))
     if len(files) != config['updates']:
         parser.error('Provide exactly the configured number of complete replay updates')
-    # Inspect every update before allocating the model or applying any gradients.
+
     for path in files:
         load_update(path, config, manifest)
     if args.model:

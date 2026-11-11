@@ -1,5 +1,3 @@
-"""Dense, fixed-workload GRPO replay input and deterministic microbatching."""
-
 from pathlib import Path
 import torch
 from .objective import group_advantages
@@ -11,7 +9,7 @@ REQUIRED = {'input_ids', 'attention_mask', 'response_mask', 'old_log_probs',
 
 
 def load_update(path, config, manifest=None):
-    """Read replay tensors and primitive provenance fields. Token fields align with ids[:, 1:]."""
+
     if manifest is None:
         raise ValueError('A validated split manifest is required for actor replay')
     data = torch.load(Path(path), map_location='cpu', weights_only=True)
@@ -42,7 +40,7 @@ def load_update(path, config, manifest=None):
     response = torch.zeros_like(valid)
     response[:, 1:] = data['response_mask'].bool()
     prompt = valid & ~response
-    # Each row is padding, prompt, response, padding, with contiguous spans.
+
     for span in (valid, prompt, response):
         starts = span[:, :1].sum(-1) + (span[:, 1:] & ~span[:, :-1]).sum(-1)
         if torch.any(starts != 1):
@@ -87,11 +85,8 @@ def load_update(path, config, manifest=None):
 
 
 def microbatches(data, rank, world_size, token_target=4096):
-    """Preserve every sequence; dense cost includes padding within each batch.
 
-    Equal-size rank shards use the same conservative sequence-count partition
-    to keep FSDP collectives aligned. No token selection or truncation occurs.
-    """
+
     count, length = data['input_ids'].shape
     if world_size <= 0 or not 0 <= rank < world_size or token_target <= 0:
         raise ValueError('Invalid rank or microbatch target')

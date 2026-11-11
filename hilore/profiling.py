@@ -1,5 +1,3 @@
-"""Paired recovery profiling and leave-one-out schedule checks."""
-
 from collections import Counter
 import gc
 import statistics
@@ -13,7 +11,7 @@ import torch.distributed as dist
 
 
 class Snapshot:
-    """Preserve local trainable shards, optimizer, buffers and model RNG states."""
+
 
     def __init__(self, model, optimizer, recovery):
         self.model, self.optimizer, self.recovery = model, optimizer, recovery
@@ -35,7 +33,7 @@ class Snapshot:
                     p.copy_(self.parameters[name])
             for name, b in self.model.named_buffers():
                 b.copy_(self.buffers[name])
-        # load_state_dict can reuse CPU tensor storage; never expose the snapshot.
+
         self.optimizer.load_state_dict(copy.deepcopy(self.optimizer_state))
         torch.set_rng_state(self.cpu_rng)
         if self.cuda_rng is not None:
@@ -63,7 +61,7 @@ class Snapshot:
 
 
 class MemorySampler:
-    """Sample device-wide NVML memory every 10 ms, including non-Torch storage."""
+
 
     def __enter__(self):
         import pynvml
@@ -107,11 +105,8 @@ def rank_max(values):
 
 
 def recovery_footprint(events, unit_name):
-    """Identify replayed operators by region lineage, shape and call stack.
 
-    CUDA kernels retain the enclosing CPU operator's identity. Multiplicity
-    distinguishes repeated invocations; uncorrelated kernels are not admitted.
-    """
+
     footprint = Counter()
     for event in events:
         parent = event.cpu_parent
@@ -131,7 +126,7 @@ def recovery_footprint(events, unit_name):
 
 
 def verify_elimination(reference_events, materialized_events, unit_name):
-    """Appendix A.1: require attributed CUDA recomputation kernels to disappear."""
+
     reference = recovery_footprint(reference_events, unit_name)
     candidate = recovery_footprint(materialized_events, unit_name)
     removed = reference - candidate
@@ -142,18 +137,12 @@ def verify_elimination(reference_events, materialized_events, unit_name):
     return removed
 
 
-def paired_measure(run, restore, representations, actions, repeats=5):
-    """Measure complete actor-update execution with a fresh CUDA allocator.
-
-    run(q, a) performs a complete update including its optimizer step and returns
-    gradients captured after accumulation/reduction and before clipping. restore
-    restores identical parameters, optimizer and RNG states before each run.
-    Both callbacks must operate solely on the current standalone learner.
-    """
-    if repeats < 2:
-        raise ValueError('Paired profiling requires repeated warmed measurements')
-    restore()
-    run(representations, actions)
+def measure_execution(run, restore, representations, actions, repeats, warmups, scope):
+    if scope not in ('microbatch', 'complete_update') or repeats < 1 or warmups < 0:
+        raise ValueError('Invalid measurement scope or repetition count')
+    for _ in range(warmups):
+        restore()
+        run(representations, actions)
     rows = []
     for _ in range(repeats):
         restore()
@@ -168,20 +157,54 @@ def paired_measure(run, restore, representations, actions, repeats=5):
             result = run(representations, actions)
             torch.cuda.synchronize()
             elapsed = time.perf_counter() - start
-        if not result['complete_update'] or not result['after_reduction_before_clipping']:
-            raise ValueError('Profiling callback used an incomplete update boundary')
+        complete = scope == 'complete_update'
+        if result.get('complete_update') is not complete or not result.get('after_reduction_before_clipping'):
+            raise ValueError('Execution boundary differs from the declared measurement scope')
         elapsed, peak, allocated, reserved = rank_max([
             elapsed, sampler.peak, torch.cuda.max_memory_allocated(), torch.cuda.max_memory_reserved()])
-        gradients = {name: value.detach().cpu().clone() for name, value in result['gradients'].items()}
-        rows.append({'seconds': elapsed, 'peak_bytes': peak, 'allocated_bytes': allocated,
-                     'reserved_bytes': reserved, 'gradients': gradients})
-        del result
-    return {'seconds': statistics.mean(r['seconds'] for r in rows),
-            'peak_bytes': max(r['peak_bytes'] for r in rows), 'runs': rows}
+        row = {'seconds': elapsed, 'peak_bytes': peak, 'allocated_bytes': allocated,
+               'reserved_bytes': reserved}
+        if complete:
+            row['gradients'] = result['gradients']
+        for key in ('actions', 'recovery_action_counts'):
+            if key in result:
+                row[key] = result[key]
+        rows.append(row)
+    return {'seconds': statistics.mean(row['seconds'] for row in rows),
+            'peak_bytes': max(row['peak_bytes'] for row in rows), 'runs': rows,
+            'measurement_scope': scope, 'repetitions': repeats, 'warmups': warmups}
+
+
+def measure_microbatch(run, restore, representations, actions, repeats=2):
+    if repeats < 2:
+        raise ValueError('Microbatch measurements require at least two repetitions')
+    return measure_execution(run, restore, representations, actions, repeats, 1, 'microbatch')
+
+
+def measure_update_once(run, restore, representations, actions):
+    return measure_execution(run, restore, representations, actions, 1, 0, 'complete_update')
+
+
+def paired_measure(run, restore, representations, actions, repeats=5):
+    if repeats < 2:
+        raise ValueError('Paired update measurements require at least two repetitions')
+    return measure_execution(run, restore, representations, actions, repeats, 1, 'complete_update')
+
+
+def recomputation_seconds(events, unit_name):
+    elapsed = 0.0
+    for event in events:
+        parent, lineage = event.cpu_parent, []
+        while parent is not None:
+            lineage.append(parent.name)
+            parent = parent.cpu_parent
+        if unit_name in lineage and 'recovery_replay' in lineage and event.name.startswith('aten::'):
+            elapsed += sum(kernel.duration for kernel in getattr(event, 'kernels', []))
+    return elapsed / 1e6
 
 
 def conditional_costs(measure, representations, feasible_actions):
-    """Measure each isolated action against the same captured all-R baseline."""
+
     all_r = ['R'] * len(representations)
     baseline = measure(representations, all_r)
     utility, memory, admitted = [], [], []
@@ -206,7 +229,7 @@ def conditional_costs(measure, representations, feasible_actions):
 
 
 def validate_joint(measure, representations, actions, memory_budget):
-    """Remove nonpositive leave-one-out actions and remeasure the joint plan."""
+
     actions = list(actions)
     while True:
         joint = measure(representations, actions)

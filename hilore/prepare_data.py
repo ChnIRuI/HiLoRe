@@ -1,5 +1,3 @@
-"""Reconstruct a frozen DeepMath split from local JSONL source snapshots."""
-
 import argparse
 from collections import defaultdict
 import hashlib
@@ -13,7 +11,7 @@ from .splits import SplitManifest
 
 
 def normalize(text):
-    """Normalize Unicode and whitespace without changing mathematical case."""
+
     return ' '.join(unicodedata.normalize('NFKC', text).split())
 
 
@@ -57,7 +55,7 @@ def read_rows(path, namespace, training=False, difficulty_width=1.0):
 
 
 def clean_source(source, benchmarks):
-    """Merge declared variants and exact normalized duplicates before exclusion."""
+
     all_rows = source + [r for rows in benchmarks.values() for r in rows]
     parent = list(range(len(all_rows)))
     def root(i):
@@ -78,14 +76,14 @@ def clean_source(source, benchmarks):
     for i, row in enumerate(source):
         if root(i) not in excluded:
             groups[root(i)].append(row)
-    # One representative per connected group gives exact split sizes and prevents
-    # a large variant family from dominating a stratum.
+
+
     return [min(rows, key=lambda r: (r['normalized_text_sha256'], r['problem_id']))
             for rows in groups.values()]
 
 
 def stratified_take(rows, count, rng):
-    """Use proportional largest-remainder quotas in topic/difficulty strata."""
+
     if len(rows) < count:
         raise ValueError('Not enough eligible distinct problem groups')
     strata = defaultdict(list)

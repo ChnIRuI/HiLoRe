@@ -1,5 +1,3 @@
-"""Validate supplied frozen problem manifests against the DeepMath protocol."""
-
 import argparse
 from collections import Counter
 import hashlib
@@ -39,7 +37,7 @@ def _disjoint(left, right, description):
 
 
 class SplitManifest:
-    """Enforce membership in supplied lists, without fabricating original splits."""
+
 
     def __init__(self, path):
         raw = Path(path).read_bytes()
@@ -108,7 +106,7 @@ def main():
 
 
 def validate_replay_provenance(data, prompt_ids, manifest):
-    """Bind replay groups to globally stable source IDs and one frozen manifest."""
+
     problem_ids = data.get('problem_ids')
     if not isinstance(problem_ids, list) or len(problem_ids) != len(prompt_ids):
         raise ValueError('Replay requires one stable problem ID per response')

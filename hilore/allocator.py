@@ -1,5 +1,3 @@
-"""Single-thread compiled two-budget allocation (Appendices B.2–B.3)."""
-
 import math
 import numpy as np
 from numba import njit
@@ -13,7 +11,7 @@ def _solve(utility, memory, risk, available, nb, nr):
     choices = np.full((count, nb + 1, nr + 1), -1, dtype=np.int8)
     for unit in range(count):
         current = np.full((nb + 1, nr + 1), -np.inf, dtype=np.float64)
-        # Strict improvement preserves action priority R, H, L at a state.
+
         for action in range(3):
             if not available[unit, action]:
                 continue
@@ -26,7 +24,7 @@ def _solve(utility, memory, risk, available, nb, nr):
                         choices[unit, m, r] = action
         previous = current
     best, bm, br = -np.inf, 0, 0
-    # Terminal ties prefer lower risk and then lower memory.
+
     for r in range(nr + 1):
         for m in range(nb + 1):
             if previous[m, r] > best:
@@ -42,11 +40,8 @@ def _solve(utility, memory, risk, available, nb, nr):
 
 def allocate(utility, memory, risks, representations, static_actions,
              memory_residual, risk_budget):
-    """Use measured same-plan costs; columns are R, H, L.
 
-    Positive axes have exactly 1024 intervals. Risk zero disables L even
-    for a zero-risk unit. No measured costs or utility values are inferred.
-    """
+
     utility = np.asarray(utility, dtype=np.float64)
     memory = np.asarray(memory, dtype=np.float64)
     risks = np.asarray(risks, dtype=np.float64)
@@ -93,6 +88,6 @@ def allocate(utility, memory, risks, representations, static_actions,
 
 
 def warmup():
-    """Compile the CPU solver before the actor-update timing window."""
+
     _solve(np.zeros((0, 3), dtype=np.float64), np.zeros((0, 3), dtype=np.int64),
            np.zeros((0, 3), dtype=np.int64), np.zeros((0, 3), dtype=np.bool_), 0, 0)

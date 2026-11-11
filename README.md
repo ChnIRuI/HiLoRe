@@ -10,7 +10,7 @@ HiLoRe reduces backward recomputation by choosing how to recover activation stat
 - **L — Compress:** recover selected BF16 MLP state through direct FP8 E4M3FN conversion; retain other required state exactly.
 - **R — Recompute:** replay the region from saved execution state.
 
-Profiling measures recovery utility and memory cost. Calibration uses 16 training microbatches; allocation then refreshes after each microbatch forward using the current GRPO update signal.
+Microbatch profiling estimates recovery utility and memory cost; a complete GC–HiLoRe update pair validates the selected plan. Calibration uses 16 training microbatches; allocation then refreshes after each microbatch forward using the current GRPO update signal.
 
 ![HiLoRe Framework](resource/overview.png)
 
@@ -43,18 +43,16 @@ The default configuration expects 60 updates; GC and HiLoRe must use identical r
 
 ### 3. Initialize and run
 
-Replace `/xxx/...` with your local paths. Use a genuine Qwen2.5-3B-Instruct snapshot. Initialization measures GC, profiles recovery, calibrates risk and validates candidate schedules on development replays drawn only from the training split.
+Replace `/xxx/...` with your local paths. Use a genuine Qwen2.5-3B-Instruct snapshot. Initialization uses one complete development replay drawn only from the training split. It selects the first `update_*.pt` file in lexicographic order unless `VALIDATION_RECORD` names a particular file. The most frequent shape class with at least 16 microbatches supplies the profiling and calibration inputs; other shapes use exact R recovery.
 
 ```bash
 export MODEL_PATH=/xxx/models/Qwen2.5-3B-Instruct
 export SPLIT_MANIFEST=/xxx/data/prepared/manifest.json
 export RISK_BUDGET=0.010
 
-# Measure and build a development profile.
 UPDATES_DIR=/xxx/development-replays OUTPUT_DIR=/xxx/initialization \
   bash scripts/initialize.sh
 
-# Run matched actor replays.
 export UPDATES_DIR=/xxx/replays
 OUTPUT_DIR=/xxx/runs/gc bash scripts/run_actor.sh gc
 
@@ -65,3 +63,13 @@ DEVELOPMENT_PROFILE=1 PROFILE_PATH=/xxx/initialization/profile.json \
 `0.010` is an example trial risk budget, not a selected operating point or the measured gradient-error threshold of `0.015`. Initialization does not certify terminal task quality; running a development profile requires the explicit flag above. Rejected profiles cannot be used.
 
 The main settings are in [configs/qwen25_3b_deepmath.json](configs/qwen25_3b_deepmath.json): LoRA rank 16, alpha 32, zero dropout, eight responses per prompt, prompt/response limits 1024/2048, GRPO clip 0.2 and K3 KL coefficient 0.001. `PYTHON_BIN` selects Python; `DRY_RUN=1` previews a launch command. Use a new output directory for each run.
+
+## Initialization protocol
+
+The default initializer ranks decoder bundles by attributed recomputation time per estimated captured byte and shortlists at most eight units. It verifies H/L recomputation elimination only for these units, then calibrates every admitted L unit on the same 16 microbatches. Candidate capture uses H fractions 0, 0.5 and 1, with duplicate plans removed.
+
+Conditional utility is estimated on matched microbatches using one warm-up and two timed repetitions. Inputs, RNG states, distributed execution and complete-update loss normalization are preserved. Capture-byte estimates only guide candidate construction; microbatch memory increments are anchored to the measured complete-GC peak for allocation. Dynamic microbatch measurements select one plan, followed by at most two rounds of leave-one-out screening without reallocating the omitted unit's budget during each comparison.
+
+Initialization executes one complete GC reference and one complete HiLoRe validation update, with no additional complete-update warm-up. The reference is measured once and retained. Acceptance requires a complete-update peak within the GC-relative ceiling, relative accumulated-gradient error at most 0.015, and faster complete-update execution than GC. Single-pair validation supplies no timing standard deviation and does not replace repeated held-out evaluation or terminal task-quality selection. A rejected plan exits with a nonzero status; an All-R fallback is not reported as successful initialization.
+
+`CANDIDATE_LIMIT`, `MICROBATCH_REPEATS` and `INTERACTION_ROUNDS` override defaults 8, 2 and 2. Initialization records the protocol, selected record, candidate units, execution counts, stage wall times and total wall time in `profile.json`. Actual initialization time must be measured on the target hardware; no one-hour runtime is guaranteed. Schema-2 profiles must be regenerated. The schema-3 loader rejects incomplete, failed and rejected profiles. Successful profiles remain development-only until terminal quality selection is completed.

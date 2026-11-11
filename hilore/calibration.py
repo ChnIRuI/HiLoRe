@@ -1,15 +1,10 @@
-"""Initialization fitting and measured schedule acceptance."""
-
 import math
 from collections import defaultdict
 
 
 def fit(rows, manifest=None):
-    """Fit Eq. 22 and freeze Eq. 23 from 16 isolated training microbatches.
 
-    Each row supplies measured bundle error, isolated gradient error, current
-    exposure, a stable unit/group identifier and a calibration microbatch ID.
-    """
+
     if manifest is None:
         raise ValueError('Calibration requires the frozen problem manifest')
     if not rows:
@@ -55,7 +50,7 @@ def fit(rows, manifest=None):
 
 
 def accept_updates(measurements, memory_budget, gc_validation_score, validation_score):
-    """Apply Eqs. 30 and 53 to complete updates, never microbatch norms."""
+
     if not measurements:
         raise ValueError("Complete-update measurements are required")
     if any(not m['complete_update'] or not m['after_reduction_before_clipping'] for m in measurements):

@@ -1,10 +1,8 @@
-"""Token-normalized GRPO objective and current-update exposure."""
-
 import torch
 
 
 def group_advantages(rewards):
-    """Normalize eight binary outcome rewards using population deviation."""
+
     if rewards.ndim != 2 or rewards.shape[1] != 8:
         raise ValueError("Expected [prompts, 8] outcome rewards")
     if not torch.all((rewards == 0) | (rewards == 1)):
@@ -17,13 +15,8 @@ def group_advantages(rewards):
 
 def loss_and_coefficients(current, old, reference, advantages, mask, update_tokens,
                           clip=0.2, beta=1e-3):
-    """Return a microbatch contribution and Eq. 4 under full-update normalization.
 
-    K3 is exp(reference-current) - (reference-current) - 1. The clipping
-    boundary convention matches torch.minimum and torch.clamp below.
-    Distributed callers multiply the loss by world size before an averaged
-    gradient reduction; the returned coefficients retain global normalization.
-    """
+
     if update_tokens <= 0:
         raise ValueError("An actor update must contain optimized response tokens")
     if not (current.shape == old.shape == reference.shape == mask.shape):
@@ -35,7 +28,7 @@ def loss_and_coefficients(current, old, reference, advantages, mask, update_toke
     if advantages.ndim == current.ndim - 1:
         advantages = advantages.unsqueeze(-1)
     valid = mask.bool()
-    # Padded log probabilities cannot introduce NaNs into either term.
+
     log_ratio = torch.where(valid, current - old, 0)
     log_reference_ratio = torch.where(valid, reference - current, 0)
     ratio = log_ratio.exp()
@@ -52,7 +45,7 @@ def loss_and_coefficients(current, old, reference, advantages, mask, update_toke
 
 
 def exposure(omega, support, influence=None):
-    """Sum each structurally reachable response position once (Eq. 7, B.1)."""
+
     if support.dtype != torch.bool or support.shape != omega.shape:
         raise ValueError("Support must be a boolean mask matching coefficients")
     weights = support.to(torch.float64)
@@ -64,7 +57,7 @@ def exposure(omega, support, influence=None):
 
 
 def gradient_error(reference, candidate, distributed=False):
-    """Eq. 56 over matching disjoint shards, after reduction and before clipping."""
+
     if reference.keys() != candidate.keys():
         raise ValueError("Gradient parameter sets differ")
     numerator = denominator = 0.0
