@@ -41,30 +41,31 @@ This creates 10,000 training problems, 2,048 validation problems and a frozen ma
 
 The default configuration expects 60 updates; GC and HiLoRe must use identical replays.
 
-### 3. Initialize and run
+### 3. Switch from GC to HiLoRe
 
-Replace `/xxx/...` with your local paths. Use a genuine Qwen2.5-3B-Instruct snapshot. Initialization uses one complete development replay drawn only from the training split. It selects the first `update_*.pt` file in lexicographic order unless `VALIDATION_RECORD` names a particular file. The most frequent shape class with at least 16 microbatches supplies the profiling and calibration inputs; other shapes use exact R recovery.
+**For Qwen2.5-3B with prepared actor replays: initialize once, then launch HiLoRe—no code edits or manual tracing rules.** Run from the repository root with your local paths:
 
 ```bash
+# 1. Set paths and a trial risk budget
 export MODEL_PATH=/xxx/models/Qwen2.5-3B-Instruct
 export SPLIT_MANIFEST=/xxx/data/prepared/manifest.json
+export UPDATES_DIR=/xxx/replays
 export RISK_BUDGET=0.010
 
+# 2. Initialize using development replays from the training split
 UPDATES_DIR=/xxx/development-replays OUTPUT_DIR=/xxx/initialization \
-  bash scripts/initialize.sh
+  bash scripts/initialize.sh &&
 
-export UPDATES_DIR=/xxx/replays
-OUTPUT_DIR=/xxx/runs/gc bash scripts/run_actor.sh gc
-
-DEVELOPMENT_PROFILE=1 PROFILE_PATH=/xxx/initialization/profile.json \
+# 3. Launch with the generated profile after initialization succeeds
+PROFILE_PATH=/xxx/initialization/profile.json DEVELOPMENT_PROFILE=1 \
   OUTPUT_DIR=/xxx/runs/hilore bash scripts/run_actor.sh hilore
 ```
 
-`0.010` is an example trial risk budget, not a selected operating point or the measured gradient-error threshold of `0.015`. Initialization does not certify terminal task quality; running a development profile requires the explicit flag above. Rejected profiles cannot be used.
-
-The main settings are in [configs/qwen25_3b_deepmath.json](configs/qwen25_3b_deepmath.json): LoRA rank 16, alpha 32, zero dropout, eight responses per prompt, prompt/response limits 1024/2048, GRPO clip 0.2 and K3 KL coefficient 0.001. `PYTHON_BIN` selects Python; `DRY_RUN=1` previews a launch command. Use a new output directory for each run.
+`0.010` is a trial budget; `DEVELOPMENT_PROFILE=1` permits development runs before terminal task-quality selection. Keep the [default configuration](configs/qwen25_3b_deepmath.json), use new output directories, and use `export DRY_RUN=1` to preview the commands.
 
 ## Initialization protocol
+
+Initialization uses one complete development replay from the training split: the first `update_*.pt` file in lexicographic order, or the file named by `VALIDATION_RECORD`. The most frequent shape class with at least 16 microbatches supplies profiling and calibration inputs; other shapes use exact R recovery.
 
 The default initializer ranks decoder bundles by attributed recomputation time per estimated captured byte and shortlists at most eight units. It verifies H/L recomputation elimination only for these units, then calibrates every admitted L unit on the same 16 microbatches. Candidate capture uses H fractions 0, 0.5 and 1, with duplicate plans removed.
 
